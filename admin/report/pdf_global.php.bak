@@ -1,0 +1,107 @@
+<?php
+require_once('../fpdf/fpdf.php');
+require_once('../class/classDatabase.php');
+require_once('../class/classIndoTime.php');
+require_once('../function.php');
+$myDb = new database();
+$myTime = new indoTime();
+
+$bulan = $_GET['bulan'];
+$tahun = $_GET['tahun'];
+$nik = $_GET['nik'];
+$lambat = $_GET['lambat'];
+$lebih = $_GET['lebih'];
+	
+$pdf=new FPDF('P','mm','A4');  
+$pdf->AddPage();  
+$pdf->setFont('Arial','',11); 
+$pdf->Cell(0,10,'SIAWEB - Absent Application',0,0,'C');
+$pdf->ln(5);
+$pdf->setFont('Arial','B',11);  
+$pdf->Cell(0,10,'LAPORAN DATA ABSENSI GLOBAL',0,0,'C');
+$pdf->ln(5);
+$pdf->setFont('Arial','',11); 
+
+if ($bulan <> '') {
+	$pdf->Cell(0,10,'Bulan '.$myTime->getBulan($bulan).' '.$tahun,0,0,'C');
+}
+else {
+	$pdf->Cell(0,10,'NIK '.$nik,0,0,'C');
+}
+
+$pdf->ln(10);  
+$pdf->setFont('Arial','',8);  
+$pdf->setFillColor(72,72,243);
+$pdf->setTextColor(255,255,255);
+
+$pdf->Cell(7,5,'NO',1, 0, 'C', 1);  
+$pdf->Cell(17,5,'Tanggal',1,0,'C', 1);  
+$pdf->Cell(17,5,'NIK',1,0,'C',1);  
+$pdf->Cell(40,5,'Nama Lengkap',1,0,'C',1);  
+$pdf->Cell(30,5,'Jabatan',1,0,'C',1);  
+$pdf->Cell(15,5,'Masuk',1,0,'C',1);  
+$pdf->Cell(15,5,'Pulang',1,0,'C',1);  
+$pdf->Cell(25,5,'Terlambat',1,0,'C',1);  
+$pdf->Cell(25,5,'Kelebihan',1,0,'C',1);  
+$pdf->ln(5);  
+
+$pdf->setFillColor(255,255,255);
+$pdf->setTextColor(0,0,0);
+
+if ($bulan != '' && $nik != '') {	
+	$sql = "SELECT a.*, a.nik AS nik_a, k.*, j.* FROM absensi a LEFT OUTER JOIN karyawan k ON a.nik=k.nik LEFT OUTER JOIN jabatan j ON k.kd_jabatan=j.kd_jabatan WHERE MONTH(a.tgl)='$bulan' AND YEAR(a.tgl)='$tahun' AND a.nik = '$nik' ORDER BY a.tgl";
+}
+else if ($bulan != '') {
+	$sql = "SELECT a.*, a.nik AS nik_a, k.*, j.* FROM absensi a LEFT OUTER JOIN karyawan k ON a.nik=k.nik LEFT OUTER JOIN jabatan j ON k.kd_jabatan=j.kd_jabatan WHERE MONTH(a.tgl)='$bulan' AND YEAR(a.tgl)='$tahun' ORDER BY a.tgl";		
+}
+else if ($nik != '') {
+	$sql = "SELECT a.*, a.nik AS nik_a, k.*, j.* FROM absensi a LEFT OUTER JOIN karyawan k ON a.nik=k.nik LEFT OUTER JOIN jabatan j ON k.kd_jabatan=j.kd_jabatan WHERE a.nik = '$nik' ORDER BY a.tgl";
+}
+
+
+$n=1;  
+$query = $myDb->select($sql);
+while($result=$myDb->getRow($query)) {
+	$pdf->Cell(7,5,$n, 1,0,'C');  
+	$pdf->Cell(17,5,$myTime->getTglInd($result['tgl']),1,0,'C');  
+	$pdf->Cell(17,5,$result['nik_a'],1,0,'C');  
+	$pdf->Cell(40,5,$result['nama'],1,0,'C');  
+	$pdf->Cell(30,5,$result['ket_jabatan'],1,0,'C');  
+	$pdf->Cell(15,5,substr($result['jam_masuk'], 0, 5),1,0,'C');  
+	$pdf->Cell(15,5,substr($result['jam_pulang'], 0, 5),1,0,'C');
+
+	# Keterlambatan
+	$tgl = $result['tgl'];
+	$resDay = $myDb->getRow($myDb->select("SELECT DATEDIFF('$tgl', CURDATE()) as selisih"));		
+	$dayName = $myTime->getHariOptional2($resDay['selisih']);
+	$r = $myDb->selectOne("SELECT set_masuk FROM waktu WHERE kd_waktu = '$dayName'");				
+	if ($result['jam_masuk'] <> '') {
+		$diff = diffTime($r, $result['jam_masuk']);
+		$pdf->Cell(25,5,detik2jam($diff),1,0,'C');
+		if ($diff > 0)
+			$totKeterlambatan += $diff;
+
+	}
+
+	# Kelebihan jam
+	$r = $myDb->selectOne("SELECT set_pulang FROM waktu WHERE kd_waktu = '$dayName'");				
+	if ($result['jam_pulang'] <> '') {
+		$diff = diffTime($r, $result['jam_pulang']);
+		$pdf->Cell(25,5,detik2jam($diff),1,0,'C');
+		if ($diff > 0)
+			$totKelebihan += $diff;
+	}
+	$pdf->ln(5);  
+	$n++;  
+}
+
+# Total
+$pdf->setFillColor(250,226,153);
+$pdf->setFont('Arial','B',8);  
+$pdf->Cell(141,5,'Total',1,0,'C',1);  
+$pdf->setFont('Arial','',8);  
+$pdf->Cell(25,5,$lambat,1,0,'C',1);  
+$pdf->Cell(25,5,$lebih,1,0,'C',1);  
+
+$pdf->Output();
+?>
